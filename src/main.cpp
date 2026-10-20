@@ -31,7 +31,16 @@ constexpr unsigned long RESULT_SHOW_MS = 5000;
 unsigned long waitingAt = 0;
 bool waitingPending = false;
 
+constexpr unsigned long LOGO_INTERVAL_MS = 10000;
+constexpr unsigned long LOGO_DURATION_MS = 1000;
+bool idle = false;
+bool logoOn = false;
+unsigned long idleSince = 0;
+unsigned long logoUntil = 0;
+
 void scheduleWaiting() {
+  idle = false;
+  logoOn = false;
   waitingAt = millis() + RESULT_SHOW_MS;
   waitingPending = true;
 }
@@ -258,6 +267,41 @@ void showName() {
   }
 }
 
+// Carita triste: la boca se curva hacia abajo y cae una lagrima.
+void drawSadFace(int mouthStep, int tearY) {
+  constexpr int cx = SCREEN_WIDTH / 2;
+  constexpr int cy = SCREEN_HEIGHT / 2;
+  display.clearDisplay();
+  display.drawCircle(cx, cy, 30, SSD1306_WHITE);
+  display.fillCircle(cx - 11, cy - 8, 3, SSD1306_WHITE);
+  display.fillCircle(cx + 11, cy - 8, 3, SSD1306_WHITE);
+  // Cejas inclinadas.
+  display.drawLine(cx - 17, cy - 17, cx - 7, cy - 13, SSD1306_WHITE);
+  display.drawLine(cx + 17, cy - 17, cx + 7, cy - 13, SSD1306_WHITE);
+  // Boca: arco hacia abajo que se va formando (mouthStep 0..8).
+  for (int dx = -mouthStep; dx <= mouthStep; dx++) {
+    const int dy = (dx * dx) / 8;
+    display.drawPixel(cx + dx, cy + 14 + dy, SSD1306_WHITE);
+    display.drawPixel(cx + dx, cy + 15 + dy, SSD1306_WHITE);
+  }
+  if (tearY >= 0) {
+    display.fillCircle(cx - 11, cy - 3 + tearY, 2, SSD1306_WHITE);
+  }
+  display.display();
+}
+
+void animacionNoEncontrado() {
+  if (!oledOk) return;
+  for (int step = 0; step <= 8; step++) {
+    drawSadFace(step, -1);
+    delay(50);
+  }
+  for (int t = 0; t < 14; t++) {
+    drawSadFace(8, t * 2);
+    delay(50);
+  }
+}
+
 void animacionInicio() {
   if (!oledOk) return;
   showName();
@@ -330,9 +374,10 @@ void handleLine(char* line) {
   if (*text == '\0') return;
 
   if (isNotFound(text)) {
-    showLines("Libro no", "encontrado", 2);
     startLed(LED_RED_PIN);
     tone(BUZZER_PIN, NOT_FOUND_TONE_HZ, NOT_FOUND_TONE_MS);
+    animacionNoEncontrado();
+    showLines("Libro no", "encontrado", 2);
     scheduleWaiting();
     return;
   }
@@ -392,6 +437,8 @@ void setup() {
   testInicial();
   animacionInicio();
   showWaiting();
+  idle = true;
+  idleSince = millis();
 }
 
 void loop() {
@@ -399,6 +446,20 @@ void loop() {
   if (waitingPending && static_cast<long>(millis() - waitingAt) >= 0) {
     waitingPending = false;
     showWaiting();
+    idle = true;
+    idleSince = millis();
+  }
+  if (idle && oledOk) {
+    const unsigned long now = millis();
+    if (!logoOn && now - idleSince >= LOGO_INTERVAL_MS) {
+      showImage();
+      logoOn = true;
+      logoUntil = now + LOGO_DURATION_MS;
+    } else if (logoOn && static_cast<long>(now - logoUntil) >= 0) {
+      showWaiting();
+      logoOn = false;
+      idleSince = now;
+    }
   }
   if (activeLed && static_cast<long>(millis() - ledOffAt) >= 0) {
     digitalWrite(activeLed, LOW);
