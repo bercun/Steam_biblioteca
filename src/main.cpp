@@ -49,18 +49,59 @@ void showLines(const char* l1, const char* l2 = "", uint8_t size2 = 1) {
   display.display();
 }
 
+// Imprime con salto de linea por palabras (o por caracteres si la palabra no cabe).
+// Devuelve false si no cabe en maxLines.
+bool printWrapped(const char* text, uint8_t size, int cols, int maxLines) {
+  const int lineH = 8 * size;
+  const int charW = 6 * size;
+  int line = 0;
+  int col = 0;
+  const char* p = text;
+  while (*p) {
+    if (*p == ' ') {
+      if (col > 0 && col < cols) { col++; }
+      p++;
+      continue;
+    }
+    const char* e = p;
+    while (*e && *e != ' ') e++;
+    int wordLen = e - p;
+    if (col > 0 && col + wordLen > cols) {
+      line++;
+      col = 0;
+    }
+    for (; p < e; p++) {
+      if (col >= cols) {
+        line++;
+        col = 0;
+      }
+      if (line >= maxLines) return false;
+      display.setCursor(col * charW, line * lineH);
+      display.write(*p);
+      col++;
+    }
+  }
+  return true;
+}
+
 void showTitlePrice(const char* title, const char* price) {
   if (!oledOk) return;
   char priceLine[24];
   snprintf(priceLine, sizeof(priceLine), "$%s", price);
   display.clearDisplay();
   display.setTextColor(SSD1306_WHITE);
-  display.setTextSize(1);
-  display.setCursor(0, 0);
-  display.println(title);
+
+  // Titulo en letra grande (3 lineas de 10 columnas); si no cabe, letra chica.
+  display.setTextSize(2);
+  if (!printWrapped(title, 2, 10, 3)) {
+    display.clearDisplay();
+    display.setTextSize(1);
+    printWrapped(title, 1, 21, 6);
+  }
+
   display.setTextSize(2);
   display.setCursor(0, 48);
-  display.println(priceLine);
+  display.print(priceLine);
   display.display();
 }
 
